@@ -29,9 +29,8 @@ def options():
     parser.add_argument("--no_cuda", action='store_true', help="avoid using CUDA when available")
     parser.add_argument('--numpy_seed', type=int, default=100)
     parser.add_argument('--torch_seed', type=int, default=76)
-       
-    args = parser.parse_args()            
-    return args
+
+    return parser.parse_args()
 
 def set_module(args, n_alphas):
     """
@@ -61,9 +60,13 @@ def train_laplace2d_parameters(args, laplace2d_module, laplace2d_optimizer, lapl
     # calculate loss
     err_tmp = label_output - X_output
     if args.fidelity == 'norm-2':
+        # fidelity_loss = torch.sum(torch.pow(err_tmp, 2)).to(torch.float32)
         fidelity_loss = torch.square(torch.sum(torch.pow(err_tmp, 2))).to(torch.float32)
     elif args.fidelity == 'norm-1':
         fidelity_loss = torch.sum(torch.abs(err_tmp)).to(torch.float32)
+    elif args.fidelity == 'MSE':
+        loss_criterion = torch.nn.MSELoss(reduction='sum')
+        fidelity_loss = loss_criterion(label_output, X_output)
     else:
         raise NotImplementedError('Undefined fidelity term. Please input: norm-1 or norm-2 for "fidelity"')
     norm_label_tensor = torch.max(label_output, dim=1, keepdim=True)[0]
@@ -77,11 +80,7 @@ def train_laplace2d_parameters(args, laplace2d_module, laplace2d_optimizer, lapl
 
 def train(args):
     # 0. set code running environment
-    if torch.cuda.is_available() and not args.no_cuda:
-        args.use_cuda = True
-    else:
-        args.use_cuda = False
-
+    args.use_cuda = bool(torch.cuda.is_available() and not args.no_cuda)
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
     Folder_name = util.make_folder(args.output_path)
@@ -106,6 +105,7 @@ def train(args):
     label_data, b, t = util.read_mat_laplace2d(args.input_file)
     input_r = np.random.randn(1,args.dim_in)
     input_r = np.expand_dims(input_r,axis=1)
+    label_data = label_data / np.max(label_data)
 
     input_r = torch.from_numpy(input_r).float()
     label_output = torch.from_numpy(label_data).float()
@@ -115,8 +115,8 @@ def train(args):
     # 2. set training parameters
     laplace2d_module = set_module(args, n_alphas=args.n_decay)
     laplace2d_optimizer = torch.optim.Adam(laplace2d_module.parameters(), lr=args.learning_rate)
-    laplace2d_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(laplace2d_optimizer, 'min', patience=800, factor=0.8, verbose=True)
-    
+    laplace2d_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(laplace2d_optimizer, 'min', patience=1000, factor=0.8, verbose=True)
+
     epoch_start_time = time.time()
     epoch_ori_time = epoch_start_time
     min_total_loss = np.inf
@@ -136,22 +136,19 @@ def train(args):
                 min_total_loss = total_loss
                 min_fidelity_loss = fidelity_loss
                 min_epoch = epoch
-            
-            util.save_param_laplace2d(D_save, T2_save, Ak_save, args.n_decay, Folder_name)
-                # util.save(dosy_module, dosy_optimizer, dosy_scheduler, args, epoch, args.module_type)
 
+                util.save_param_laplace2d(D_save, T2_save, Ak_save, args.n_decay, Folder_name + 'best_')
+                # util.save(dosy_module, dosy_optimizer, dosy_scheduler, args, epoch, args.module_type)
+            util.save_param_laplace2d(D_save, T2_save, Ak_save, args.n_decay, Folder_name)
 
 if __name__ == "__main__":
     args = options()
-    args.input_file = 'data/Laplace2D/laplace2D_net_input.mat'
+    args.input_file = 'data/Laplace2D/S4_net_input.mat'
     args.output_path = 'Net_Results/Laplace2D/'
-    args.diff_range = []
-    # args.diff_range = [3.0, 12.0]
-    args.reg_A = 0.1
     args.n_epochs = 50000
     args.learning_rate = 1e-3
-    args.fidelity = 'norm-2'
-    args.n_decay = 2
+    args.fidelity = 'MSE'
+    args.n_decay = 4
 
     train(args)
 

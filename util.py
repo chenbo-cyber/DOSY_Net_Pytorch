@@ -43,12 +43,12 @@ def read_mat_laplace2d(pathname):
 def make_folder(BaseDir):
     Name_time = time.strftime("%Y-%m-%d-%H_%M_%S", time.localtime())
     subsubFolderName = str(Name_time)
-    FolderName = '%s%s/' % (BaseDir,subsubFolderName)
+    FolderName = f'{BaseDir}{subsubFolderName}/'
     if not os.path.isdir(BaseDir):
         os.makedirs(FolderName)
     else:
         os.mkdir(FolderName)
-    
+
     return FolderName
 
 def save_csv(data, FolderName, file_name, shape, is_real):
@@ -72,16 +72,19 @@ def save_param_laplace2d(aout, bout, Ak, alpha_num, FolderName):
     save_csv(bout, FolderName, file_name='relax_time.csv', shape=[-1,alpha_num], is_real=1)
     save_csv(Ak, FolderName, file_name='amplitude.csv', shape=[-1,alpha_num], is_real=1)
 
+def save_spec_laplace2d(Ak, n_dim_x, n_dim_y, FolderName):
+    # save_csv(Ak, FolderName, file_name='rec_spec.csv', shape=[n_dim_y, n_dim_x], is_real=1)
+    save_path = FolderName + 'rec_spec.npy'
+    np.save(save_path, Ak)
 
 def symlink_force(target, link_name):
     try:
         os.symlink(target, link_name)
     except OSError as e:
-        if e.errno == errno.EEXIST:
-            os.remove(link_name)
-            os.symlink(target, link_name)
-        else:
+        if e.errno != errno.EEXIST:
             raise e
+        os.remove(link_name)
+        os.symlink(target, link_name)
 
 def save(model, optimizer, scheduler, args, epoch, module_type):
     checkpoint = {
@@ -96,6 +99,6 @@ def save(model, optimizer, scheduler, args, epoch, module_type):
     if not os.path.exists(os.path.join(args.output_dir, module_type)):
         os.makedirs(os.path.join(args.output_dir, module_type))
     cp = os.path.join(args.output_dir, module_type, 'last.pth')
-    fn = os.path.join(args.output_dir, module_type, 'epoch_'+str(epoch)+'.pth')
+    fn = os.path.join(args.output_dir, module_type, f'epoch_{str(epoch)}.pth')
     torch.save(checkpoint, fn)
     symlink_force(fn, cp)
